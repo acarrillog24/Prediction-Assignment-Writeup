@@ -1,0 +1,118 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Andres"
+date: "22/7/2020"
+output: html_document
+---
+
+        Approach
+
+Our outcome variable is classe, a factor variable. For this data set, “participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in 5 different fashions: - exactly according to the specification (Class A) - throwing the elbows to the front (Class B) - lifting the dumbbell only halfway (Class C) - lowering the dumbbell only halfway (Class D) - throwing the hips to the front (Class E)
+
+Two models will be tested using decision tree and random forest. The model with the highest accuracy will be chosen as our final model.
+
+        
+        Cross-validation
+        
+Cross-validation will be performed by subsampling our training data set randomly without replacement into 2 subsamples: TrainTrainingSet data (75% of the original Training data set) and TestTrainingSet data (25%). Our models will be fitted on the TrainTrainingSet data set, and tested on the TestTrainingSet data. Once the most accurate model is choosen, it will be tested on the original Testing data set.
+
+
+        Expected out-of-sample error
+
+The expected out-of-sample error will correspond to the quantity: 1-accuracy in the cross-validation data. Accuracy is the proportion of correct classified observation over the total sample in the TestTrainingSet data set. Expected accuracy is the expected accuracy in the out-of-sample data set (i.e. original testing data set). Thus, the expected value of the out-of-sample error will correspond to the expected number of missclassified observations/total observations in the Test data set, which is the quantity: 1-accuracy found from the cross-validation data set.
+
+    Data loading and cleaning
+    
+```{r}
+library(rattle); library(caret); library(rpart); library(rpart.plot); library(corrplot); library(randomForest); library(RColorBrewer)
+
+trainRaw <- read.csv("pml-training.csv")
+testRaw <- read.csv("pml-testing.csv")
+dim(trainRaw)
+dim(testRaw)
+rm(trainFile)
+rm(testFile)
+
+NZV <- nearZeroVar(trainRaw, saveMetrics = TRUE)
+head(NZV, 20)
+
+training01 <- trainRaw[, !NZV$nzv]
+testing01 <- testRaw[, !NZV$nzv]
+dim(training01)
+dim(testing01)
+
+rm(trainRaw)
+rm(testRaw)
+rm(NZV)
+
+regex <- grepl("^X|timestamp|user_name", names(training01))
+training <- training01[, !regex]
+testing <- testing01[, !regex]
+rm(regex)
+rm(training01)
+rm(testing01)
+dim(training)
+dim(testing)
+
+cond <- (colSums(is.na(training)) == 0)
+training <- training[, cond]
+testing <- testing[, cond]
+rm(cond)
+```
+
+Now we visualize the correlation between different variables in the dataset. based on this we can see our ingnorance of variables before if it is ok or not.
+```{r}
+corrplot(cor(training[, -length(names(training))]), method = "color", tl.cex = 0.5)
+```
+
+
+    Approach
+I am going to apply two different models and evaluate how they behave on this data. Two models will be run and they are decision tree and random forest. we seek the model with the highest accuracy will be our final model. we will use the ordinary way to split the cleaned training set into a pure training data set (70%) and a validation data set (30%). We will use the validation data set to conduct cross validation. We are using seed for reproducability purposes.
+
+```{r}
+set.seed(56789) # For reproducibile purpose
+inTrain <- createDataPartition(training$classe, p = 0.70, list = FALSE)
+validation <- training[-inTrain, ]
+training <- training[inTrain, ]
+rm(inTrain)
+```
+
+    Decision tree to fit our model
+```{r}
+modelTree <- rpart(classe ~ ., data = training, method = "class")
+rpart.plot(modelTree, main="Classification Tree", extra=102, under=TRUE, faclen=0)
+```
+
+Now after we have trained our model, we want to test it against validation data.
+```{r}
+predictTree <- predict(modelTree, validation, type = "class")
+confusionMatrix(table(validation$class, predictTree))
+```
+We find that the Estimated Accuracy of the Desicion tree Model is 74.4774851% and the Estimated Out-of-Sample Error is about 25.5225149%.
+
+    Random forest
+We now train our model using random forest and doing the dame validation
+
+```{r}
+modelRF <- train(classe ~ ., data = training, method = "rf", trControl = trainControl(method = "cv", 5), ntree = 250)
+modelRF
+```
+
+Now after we have trained our model, we want to test it against validation data.
+```{r}
+predictRF <- predict(modelRF, validation)
+confusionMatrix(table(validation$classe, predictRF))
+```
+
+We find that the Estimated Accuracy of the Random Forest Model is 99.7960918% and the Estimated Out-of-Sample Error is about 0.2039082%.
+
+    Conlusion
+we find that the Accuracy of the Random Forest Model and error is better than the Decision Tree model. so we conclude that the random forest is the better model.
+
+    Submission part
+this is the code for predicting outcome levels on the original Testing data set using Random Forest algorithm as it is the chosn model as being better at performance on our data.
+```{r}
+rm(accuracy)
+rm(ose)
+predict(modelRF, testing[, -length(names(testing))])
+```
